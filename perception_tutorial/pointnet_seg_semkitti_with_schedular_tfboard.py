@@ -8,6 +8,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from lr_schedular import CosineAnnealingSchedule
 
 from utils import point_data_generator_tf, get_color_map, one_hot_points, \
 convert_to_open3d
@@ -18,6 +19,10 @@ NUM_POINTS = 5_000
 NUM_CLASSES = 20# len(get_color_map(cfg_path))
 BATCH_SIZE = 10
 EPOCHS = 1000
+
+def step_lr(schedular, epoch, optimizer):
+    lr = schedular(epoch)
+    optimizer.lr = lr
 
 def conv_bn(x, filters):
     x = layers.Conv1D(filters, kernel_size=1, padding="valid")(x)
@@ -86,7 +91,7 @@ seg_logit = conv_bn(x, NUM_CLASSES)
 seg_out = layers.Softmax()(seg_logit)
 
 model = keras.Model(inputs=inputs, outputs=seg_out)
-ckpt_dir = './checkpoints_ae'
+ckpt_dir = ''
 load_pretrained = False 
 if load_pretrained:
     print("Loading model...")
@@ -139,24 +144,34 @@ def normalise_points(points_batch):
 mean_metric = tf.keras.metrics.Mean()
 num_batches = num_sample // BATCH_SIZE
 def train():
-    for e in range(EPOCHS):
-        mean_metric.reset_states()
-        with tqdm(total=num_batches * BATCH_SIZE) as progress_bar:
-            for pcd, label in pcd_generator_train.take(num_batches):
-                pcd, _, _ = normalise_points(pcd)
+    scheduler = CosineAnnealingSchedule(min_lr=0, max_lr=1e-3, cycle_length=EPOCHS)
+    ## summary writer for tensorboard
+    writer = tf.summary.create_file_writer('./logs/point_seg_logs')
+    with writer.as_default():
+        for e in range(EPOCHS):
+            mean_metric.reset_states()
+            step_lr(scheduler, e, optimizer)
+            print("current lr: ", optimizer.lr.numpy())
+            with tqdm(total=num_batches * BATCH_SIZE) as progress_bar:
+                for pcd, label in pcd_generator_train.take(num_batches):
+                    pcd, _, _ = normalise_points(pcd)
 
-                one_hot_label_batch = one_hot_points(label, NUM_CLASSES)
+                    one_hot_label_batch = one_hot_points(label, NUM_CLASSES)
 
-                loss = train_step(model, pcd, one_hot_label_batch)
-                mean_metric.update_state(loss)
-                #print(loss)
-                progress_bar.update(BATCH_SIZE)
+                    loss = train_step(model, pcd, one_hot_label_batch)
+                    mean_metric.update_state(loss)
+                    #print(loss)
+                    progress_bar.update(BATCH_SIZE)
 
-        print("Epoch: {}, Mean Loss: {}".format(e,
-                                               mean_metric.result().numpy()))
+            print("Epoch: {}, Mean Loss: {}".format(e,
+                                                mean_metric.result().numpy()))
 
-        ## save model at the end of epoch
-        model.save_weights('' + str(e+1))
+            ## write results to tensorboard
+            tf.summary.scalar('learning rate', optimizer.lr.numpy(), e)
+            tf.summary.scalar('mean loss', mean_metric.result().numpy(), e)
+            writer.flush()
+            ## save model at the end of epoch
+            model.save_weights('' + str(e+1))
 
 def test():
     ckpt = ''

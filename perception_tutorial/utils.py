@@ -9,7 +9,7 @@ from sklearn.preprocessing import MinMaxScaler
 from tqdm import tqdm
 
 
-path = '/media/2T/public_data/velodyne_sub/'
+path = ''
 
 import yaml
 
