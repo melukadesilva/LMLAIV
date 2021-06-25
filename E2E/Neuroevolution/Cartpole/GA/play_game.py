@@ -38,7 +38,13 @@ def play_episode(policy_model, env):
 
 
 # make the cartpole env
-env = gym.make('CartPole-v0')
+gym.envs.register(
+        id='CartPole-v2',
+        entry_point='gym.envs.classic_control:CartPoleEnv',
+        max_episode_steps=1000,
+        reward_threshold=950.0,
+    )
+env = gym.make('CartPole-v2')
 # Initialise A model
 model = PolicyModel([4, 32, 32, 2])
 model.load('./saved_elites', '2_1000_7176187.npy')
