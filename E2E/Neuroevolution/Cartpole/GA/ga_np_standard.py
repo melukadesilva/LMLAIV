@@ -295,7 +295,7 @@ class GeneticAlgorithm():
         # save the elites who satisfies a threshold
         elites_to_save = [self.model_population[i] for i in range(5)]
         for elite in elites_to_save:
-            if elite['reward'] > 100:
+            if elite['reward'] > 800:
                 print("Saving Elite")
                 save_elite(elite, self.generation_id)
         # return the elite reward for plotting
