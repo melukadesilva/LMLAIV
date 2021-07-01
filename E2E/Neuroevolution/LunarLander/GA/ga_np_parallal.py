@@ -59,7 +59,7 @@ class GeneticAlgorithm():
         # print(self.seed[0])
         self.model_population = deque(maxlen=population_size)
         self.elite_reward = 0
-        # self.T = truncation_point
+        self.T = truncation_point
         self.num_steps = 1
 
         self.env = env
@@ -221,13 +221,14 @@ class GeneticAlgorithm():
                 # print(total_reward)
                 population_fitness.append(total_reward)
 
+        # monitor best performing individuals
         mean_population_reward = np.mean(population_fitness)
         # elite_reward = self.model_population[0]['reward']
         # print(mean_population_reward)
         return mean_population_reward
 
     def elite_tournament(self, best_n):
-        for i in range(self.elite_tournament_size):
+        for i in range(len(best_n)):
             total_reward = 0
             for j in range(30):
                 episode_reward = self.play_episode(best_n[i]['model'])
@@ -278,8 +279,9 @@ class GeneticAlgorithm():
                 maxlen=self.population_size)
 
         # print(elite)
-        # sorted_rewards = [m['reward'] for m in self.model_population]
+        sorted_rewards = [m['reward'] for m in self.model_population]
         # print(sorted_rewards)
+        # print(len(sorted_rewards))
         # If its the 1st generation select 10 individuals and play 30 games to
         # determine the correct elite
         if self.generation_id == 1:
@@ -302,13 +304,14 @@ class GeneticAlgorithm():
             print()
             print("Evaluating Elites at gen {}".format(self.generation_id))
             best_n = [copy.deepcopy(self.model_population[i]) for i in range(self.elite_tournament_size - 1)]
-            best_n.insert(0, elite_original)
+            # best_n.insert(0, elite_original)
             
             # select the elite
             elite, elite_index = self.select_elite(best_n)
             print(elite['reward'])
             print(elite_original_reward)
-            if elite_original['reward'] > elite['reward']:
+            if elite_original_reward > elite['reward']:
+                elite_original['reward'] = elite_original_reward
                 self.model_population.insert(0, elite_original)
             else:
                 print("New Elite, ", elite['reward'])
@@ -327,7 +330,9 @@ class GeneticAlgorithm():
                     print("Saving Elite")
                     save_elite(elite, self.generation_id)
         # return the elite reward for plotting
-        return self.model_population[0]['reward']
+        best_population_reward = np.mean([self.model_population[i]['reward'] for i in range(10)])
+        
+        return self.model_population[0]['reward'], best_population_reward
 
 
 def main(population_size, truncation_point, sigma):
@@ -364,8 +369,8 @@ def main(population_size, truncation_point, sigma):
             print("##### NEW POPULATION #####")
             print()
             population_reward, sigma_step = ga_optimiser.evolve(pool)
-            elite_reward = ga_optimiser.sort_population()
-            tf.summary.scalar('population mean reward', population_reward, ep + 1)
+            elite_reward, best_mean_reward = ga_optimiser.sort_population()
+            tf.summary.scalar('best population mean reward', best_mean_reward, ep + 1)
             tf.summary.scalar('Elite reward', elite_reward, ep + 1)
             tf.summary.scalar('sigma decay', sigma_step, ep + 1)
             print()
@@ -378,7 +383,7 @@ def main(population_size, truncation_point, sigma):
 
 
 if __name__ == "__main__":
-    main(500, 20, 0.0002)
+    main(1001, 20, 0.002)
 '''
 #rewards = np.random.randint(0.0, 10.0, 10)
 ga_optimiser.evolve()
