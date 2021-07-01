@@ -1,3 +1,4 @@
+from math import tanh
 import os.path
 import time
 from typing import Tuple
@@ -6,15 +7,27 @@ from numpy.core.defchararray import mod
 from numpy.core.fromnumeric import shape
 
 
+def softmax(x):
+    e = np.exp(x)
+    return e / e.sum()
+
+def relu(x):
+    x[x<0] = 0
+    return x
+
+def sigmoid(x):
+  return 1 / (1 + np.exp(-x))
+    
 class PolicyModel:
     def __init__(self, layer_shapes: list) -> None:
         # initialise the weights
         self.layer_shapes = layer_shapes
         self.num_layers = len(layer_shapes) - 1
         # make the model layers as a list
+        # [[4, 32], [32, 32], [32, 2]]
         self.model_weights = [np.zeros((layer_shapes[i - 1], layer_shapes[i])) \
                               for i in range(1, len(layer_shapes))]
-
+        # [32, 32, 2]
         self.model_biases = [np.zeros((layer_shapes[i])) \
                              for i in range(1, len(layer_shapes))]
 
@@ -31,9 +44,15 @@ class PolicyModel:
     def __call__(self, x: np.ndarray) -> np.ndarray:
         # call the model by multiplying inputs by weights and adding the bias
         for i in range(self.num_layers):
+            x = np.tanh(np.matmul(x, self.model_weights[i]) + self.model_biases[i])
+        '''
+        x = sigmoid(np.matmul(x, self.model_weights[0]) + self.model_biases[0])
+        for i in range(1, self.num_layers-2):
             # print(x)
-            x = np.matmul(x, self.model_weights[i]) + self.model_biases[i]
-
+            x = relu(np.matmul(x, self.model_weights[i]) + self.model_biases[i])
+        # x -> l1 -> x -> l2 -> x -> o
+        x = softmax(np.matmul(x, self.model_weights[-1]) + self.model_biases[-1])
+        '''
         return x
 
     def build(self, x: np.ndarray) -> np.ndarray:
@@ -77,8 +96,8 @@ class PolicyModel:
     def init_weights(self, type, seeds: int) -> None:
         np.random.seed(seeds)
         if type == 'standard':
-            new_w = np.random.normal(loc=0.0, scale=1.0, size=self.flat_weights_size)
-            new_b = np.random.normal(loc=0.0, scale=1.0, size=self.flat_biases_size)
+            new_w = np.random.normal(loc=0.0, scale=1.0, size=self.flat_weights_size) 
+            new_b = np.random.normal(loc=0.0, scale=1.0, size=self.flat_biases_size) 
             self.set_weights_biases(new_w, new_b)
         else:
             raise NotImplementedError("Method not implemented")
@@ -114,6 +133,7 @@ class PolicyModel:
 
 '''
 model = PolicyModel([4, 32, 32, 2])
+
 init_w, init_b = model.get_weights_biases()
 # print(init_w)
 # print(init_b)
