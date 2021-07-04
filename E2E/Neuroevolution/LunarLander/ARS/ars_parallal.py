@@ -7,6 +7,8 @@ import numpy as np
 from model import PolicyModel
 import multiprocessing as mp
 
+import tensorflow as tf
+
 
 def worker_process(args):
     func, arg = args
@@ -23,12 +25,14 @@ def normalise_reward(rewards):
 
 
 class ARS:
-    def __init__(self, num_directions, num_iterations, num_best, layer_hidden_shapes, alpha, log_frequency, env):
+    def __init__(self, num_directions, num_iterations, num_best, layer_hidden_shapes, alpha, log_frequency,
+                 checkpoint_dir, env):
         self.num_directions = num_directions
         self.num_iterations = num_iterations
         self.num_best = num_best
         self.alpha = alpha
         self.log_f = log_frequency
+        self.checkpoint_dir = checkpoint_dir
 
         self.env = env
         num_actions = [env.action_space.n]
@@ -116,58 +120,64 @@ class ARS:
 
         # pool_2 = mp.Pool(num_cpus // 2) if num_cpus > 1 else None
         # iterate for number of episodes
+        writer = tf.summary.create_file_writer('np_logs/lunar/100d_30s_500')
+        with writer.as_default():
+            for ep in range(self.num_iterations):
+                # positive_reward = list()
+                # negative_reward = list()
+                # iterate for number of delta directions (samples)
+                # episode_deltas = list()
 
-        for ep in range(self.num_iterations):
-            # positive_reward = list()
-            # negative_reward = list()
-            # iterate for number of delta directions (samples)
-            # episode_deltas = list()
+                episode_deltas = [self.sample_deltas() for _ in range(self.num_directions)]
+                # print(len(delta_list))
+                worker_args = [(self.explore, deltas) for deltas in episode_deltas]
+                # print(len(worker_args))
+                both_rewards = np.array(pool.map(worker_process, worker_args))
+                # print(np.array(both_rewards))
+                positive_reward = both_rewards[:, 0]
+                negative_reward = both_rewards[:, 1]
+                # print(negative_reward)
+                # positive_reward.append(p_r)
+                # negative_reward.append(n_r)
 
-            episode_deltas = [self.sample_deltas() for _ in range(self.num_directions)]
-            # print(len(delta_list))
-            worker_args = [(self.explore, deltas) for deltas in episode_deltas]
-            # print(len(worker_args))
-            both_rewards = np.array(pool.map(worker_process, worker_args))
-            # print(np.array(both_rewards))
-            positive_reward = both_rewards[:, 0]
-            negative_reward = both_rewards[:, 1]
-            # print(negative_reward)
-            # positive_reward.append(p_r)
-            # negative_reward.append(n_r)
+                all_rewards = np.array(positive_reward + negative_reward)
+                all_rewards = normalise_reward(all_rewards)
+                reward_sigma = all_rewards.std()
 
-            all_rewards = np.array(positive_reward + negative_reward)
-            all_rewards = normalise_reward(all_rewards)
-            reward_sigma = all_rewards.std()
+                # sort rollouts wrt max(r_pos, r_neg) and take (hp.b) best
+                scores = {k: max(r_pos, r_neg) for k, (r_pos, r_neg) in enumerate(zip(positive_reward, negative_reward))}
+                order = sorted(scores.keys(), key=lambda x: scores[x])[-self.num_best:]
+                # print(order)
+                # get the descending oder and get the corresponding positive, negative rewards and deltas
+                rollouts = [(positive_reward[k], negative_reward[k], episode_deltas[k]) for k in order[::-1]]
+                # update the model parameters
+                self.update_model(rollouts, reward_sigma)
 
-            # sort rollouts wrt max(r_pos, r_neg) and take (hp.b) best
-            scores = {k: max(r_pos, r_neg) for k, (r_pos, r_neg) in enumerate(zip(positive_reward, negative_reward))}
-            order = sorted(scores.keys(), key=lambda x: scores[x])[-self.num_best:]
-            # print(order)
-            # get the descending oder and get the corresponding positive, negative rewards and deltas
-            rollouts = [(positive_reward[k], negative_reward[k], episode_deltas[k]) for k in order[::-1]]
-            # update the model parameters
-            self.update_model(rollouts, reward_sigma)
+                if ep % self.log_f == 0:
+                    print(ep)
+                    total_reward = 0.0
+                    is_render = False
+                    if ep > 90:
+                        is_render = True
+                    for _ in range(5):
+                        total_reward += self.evaluate(is_render=is_render)
 
-            if ep % self.log_f == 0:
-                print(ep)
-                total_reward = 0.0
-                is_render = False
-                if ep > 90:
-                    is_render = True
-                for _ in range(5):
-                    total_reward += self.evaluate(is_render=is_render)
+                    mean_total_reward = total_reward / 5.0
+                    print("Episode: {}, Test reward: {}".format(ep, mean_total_reward))
+                    tf.summary.scalar('reward', mean_total_reward, ep)
+                    # save best one
+                    if mean_total_reward > 150:
+                        self.model.save(self.checkpoint_dir, ep, mean_total_reward)
 
-                print("Episode: {}, Test reward: {}".format(ep, total_reward / 5.0))
-
-        if pool is not None:
-            pool.close()
-            pool.join()
+            if pool is not None:
+                pool.close()
+                pool.join()
 
 
 # dummy test the algorithm
 def main():
     _env = gym.make('LunarLander-v2')
-    ars = ARS(60, 100, 20, [32], 0.015, 5, _env)
+    ars = ARS(100, 500, 30, [32], 0.015, 5, './saved_elites', _env)
     ars.train()
 
 
