@@ -37,7 +37,8 @@ class GeneticAlgorithm():
         self.generation_id = 0
         self.num_generations = num_generations
         self.elite_tournament_size = elite_tournament_size
-        self.sigma = sigma  # mutation strength
+        self.init_sigma = sigma
+        self.sigma = np.random.randn(population_size) * sigma  # mutation strength
         self.population_size = population_size
         self.num_threads = mp.cpu_count() if num_threads == -1 else 1
         # self.min_array = np.random.uniform(-0.00001, -0.01, population_size)
@@ -77,9 +78,7 @@ class GeneticAlgorithm():
     def evolve(self, pool):
         # self.sigma = self.scheduler(self.generation_id)
         self.generation_id += 1
-        if self.generation_id != 1:
-            self.sigma -= self.sigma / self.num_generations #self.sigma / 2
-
+        
         if self.generation_id == 1:
             for p in range(self.population_size - 1):
                 # initialise the model weights
@@ -92,6 +91,7 @@ class GeneticAlgorithm():
                     'model': policy_model,
                     'seed': self.seed_table[0][p],
                     'reward': -21,
+                    'sigma': self.sigma[p]
                 })
 
         else:
@@ -115,14 +115,14 @@ class GeneticAlgorithm():
         print("Population size", len(self.model_population))
         population_mean_fitness = self.compute_fitness(pool)
 
-        return population_mean_fitness, self.sigma
+        return population_mean_fitness
 
     def mutate_individual(self, selected_individual, individual_index):
         # get the model weights and biases
         selected_model = selected_individual['model']
         current_seed = selected_individual['seed']
         current_reward = selected_individual['reward']
-
+        sigma = selected_individual['sigma']
         # param_mean = [tf.reduce_mean(p).numpy() for p in selected_model.weights]
 
         new_seed = next_seed(current_seed, self.seed_table[self.generation_id - 1][individual_index])
@@ -136,9 +136,13 @@ class GeneticAlgorithm():
         # make a new standar normal vector that of the shape of weight and biases
         normal_w = np.random.normal(size=len(w)) 
         normal_b = np.random.normal(size=len(b))
+        # mutate the sigma using a uniform distribution
+        sigma = sigma - self.init_sigma * np.random.randn(1)[0]
+        sigma = np.maximum(np.minimum(sigma, self.init_sigma), 0)
+
         # mutate the individual
-        w = w + self.sigma * normal_w
-        b = b + self.sigma * normal_b
+        w = w + sigma * normal_w
+        b = b + sigma * normal_b
         # assign the new weights to the selected model
         selected_model.set_weights_biases(w, b)
         '''
@@ -157,7 +161,8 @@ class GeneticAlgorithm():
         mutated_individual = {
             'model': selected_model,
             'seed': new_seed,
-            'reward': ''
+            'reward': '',
+            'sigma': sigma
         }
 
         return mutated_individual
@@ -232,7 +237,7 @@ class GeneticAlgorithm():
         return mean_population_reward
 
     def elite_tournament(self, best_n):
-        if self.generation_id > 400:
+        if self.generation_id > 950:
             is_render = True
         else:
             is_render = False
@@ -312,34 +317,39 @@ class GeneticAlgorithm():
             print()
             print("Evaluating Elites at gen {}".format(self.generation_id))
             best_n = [copy.deepcopy(self.model_population[i]) for i in range(self.elite_tournament_size - 1)]
-            # best_n.insert(0, elite_original)
+            best_n.insert(0, elite_original)
             
             # select the elite
             elite, elite_index = self.select_elite(best_n)
             print(elite['reward'])
             print(elite_original_reward)
             if elite_original_reward > elite['reward']:
-                elite_original['reward'] = elite_original_reward
+                # elite_original['reward'] = elite_original_reward
                 self.model_population.insert(0, elite_original)
             else:
                 print("New Elite, ", elite['reward'])
                 #print(elite_original_reward)
                 print()
+                if elite['reward'] > 100:
+                    print("Saving Elite")
+                    save_elite(elite, self.generation_id)
                 self.model_population.insert(0, elite)
             sorted_rewards = [m['reward'] for m in self.model_population]
             # print("Final population reward: ", sorted_rewards)
             print(len(self.model_population))
 
         # save the elites who satisfies a threshold
+        '''
         elites_to_save = [self.model_population[i] for i in range(5)]
         for elite in elites_to_save:
             if elite['reward'] > 150:
                 print("Saving Elite")
                 save_elite(elite, self.generation_id)
+        '''
         # return the elite reward for plotting
         best_population_reward = np.mean([self.model_population[i]['reward'] for i in range(10)])
         
-        return self.model_population[0]['reward'], best_population_reward
+        return self.model_population[0]['reward'], best_population_reward, elite['sigma']
 
 
 def main(population_size, truncation_point, sigma):
@@ -355,8 +365,8 @@ def main(population_size, truncation_point, sigma):
     )
     env = gym.make('CartPole-v2')
     '''
-    num_generations = 500
-    layer_shapes = [64, 64]
+    num_generations = 1000
+    layer_shapes = [256, 128]
     ga_optimiser = GeneticAlgorithm(
         population_size,
         truncation_point,
@@ -367,7 +377,7 @@ def main(population_size, truncation_point, sigma):
     num_cpus = mp.cpu_count() if num_threads == -1 else 1
     
     # print(pool)
-    writer = tf.summary.create_file_writer('./np_logs/lunar/1000_select_50_2e-3s_fixed_decay_2')
+    writer = tf.summary.create_file_writer('./np_logs/lunar/learnable_sigma_test_5/bound_0_sigma')
     pool = mp.Pool(num_cpus) if num_cpus > 1 else None
     with writer.as_default():
         for ep in range(num_generations):
@@ -375,8 +385,9 @@ def main(population_size, truncation_point, sigma):
             print()
             print("##### NEW POPULATION #####")
             print()
-            population_reward, sigma_step = ga_optimiser.evolve(pool)
-            elite_reward, best_mean_reward = ga_optimiser.sort_population()
+            population_reward = ga_optimiser.evolve(pool)
+            elite_reward, best_mean_reward, sigma_step = ga_optimiser.sort_population()
+            print(sigma_step)
             tf.summary.scalar('best population mean reward', best_mean_reward, ep + 1)
             tf.summary.scalar('Elite reward', elite_reward, ep + 1)
             tf.summary.scalar('sigma decay', sigma_step, ep + 1)
@@ -390,7 +401,7 @@ def main(population_size, truncation_point, sigma):
 
 
 if __name__ == "__main__":
-    main(1001, 50, 2e-3)
+    main(501, 50, 2e-3)
 '''
 #rewards = np.random.randint(0.0, 10.0, 10)
 ga_optimiser.evolve()

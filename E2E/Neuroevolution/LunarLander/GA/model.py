@@ -93,11 +93,14 @@ class PolicyModel:
         self.model_weights = model_new_layer_weights
         self.model_biases = model_new_layer_biases
 
-    def init_weights(self, type, seeds: int) -> None:
+    def init_weights(self, type, seeds: int, init_bias=False) -> None:
         np.random.seed(seeds)
         if type == 'standard':
             new_w = np.random.normal(loc=0.0, scale=1.0, size=self.flat_weights_size) 
-            new_b = np.random.normal(loc=0.0, scale=1.0, size=self.flat_biases_size) 
+            if init_bias == True:
+                new_b = np.random.normal(loc=0.0, scale=1.0, size=self.flat_biases_size) 
+            else:
+                new_b = np.zeros(shape=self.flat_biases_size)
             self.set_weights_biases(new_w, new_b)
         else:
             raise NotImplementedError("Method not implemented")
