@@ -10,6 +10,14 @@ def worker_process(args):
     return func(arg)
 
 
+def normalise_reward(rewards):
+    r_mean = rewards.mean()
+    r_std = rewards.std()
+    if r_std == 0.0:
+        return
+    return (rewards - r_mean) / r_std
+
+
 class ARS:
     def __init__(self, num_directions, num_iterations, num_best, layer_hidden_shapes, alpha, log_frequency, env):
         self.num_directions = num_directions
@@ -124,6 +132,7 @@ class ARS:
             # negative_reward.append(n_r)
 
             all_rewards = np.array(positive_reward + negative_reward)
+            all_rewards = normalise_reward(all_rewards)
             reward_sigma = all_rewards.std()
 
             # sort rollouts wrt max(r_pos, r_neg) and take (hp.b) best
