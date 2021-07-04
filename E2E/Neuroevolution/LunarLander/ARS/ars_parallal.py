@@ -1,3 +1,7 @@
+# motivated examples #
+# https://github.com/alexis-jacq/numpy_ARS.git
+# https://github.com/iamsuvhro/Augmented-Random-Search.git
+
 import gym
 import numpy as np
 from model import PolicyModel
@@ -139,6 +143,7 @@ class ARS:
             scores = {k: max(r_pos, r_neg) for k, (r_pos, r_neg) in enumerate(zip(positive_reward, negative_reward))}
             order = sorted(scores.keys(), key=lambda x: scores[x])[-self.num_best:]
             # print(order)
+            # get the descending oder and get the corresponding positive, negative rewards and deltas
             rollouts = [(positive_reward[k], negative_reward[k], episode_deltas[k]) for k in order[::-1]]
             # update the model parameters
             self.update_model(rollouts, reward_sigma)
