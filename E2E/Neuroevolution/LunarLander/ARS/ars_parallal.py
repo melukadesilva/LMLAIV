@@ -152,12 +152,12 @@ class ARS:
                 print(ep)
                 total_reward = 0.0
                 is_render = False
-                if ep > 90:
+                if ep > 900:
                     is_render = True
-                for _ in range(5):
+                for _ in range(30):
                     total_reward += self.evaluate(is_render=is_render)
 
-                print("Episode: {}, Test reward: {}".format(ep, total_reward / 5.0))
+                print("Episode: {}, Test reward: {}".format(ep, total_reward / 30.0))
 
         if pool is not None:
             pool.close()
@@ -167,7 +167,7 @@ class ARS:
 # dummy test the algorithm
 def main():
     _env = gym.make('LunarLander-v2')
-    ars = ARS(60, 100, 20, [32], 0.015, 5, _env)
+    ars = ARS(100, 1000, 30, [32], 0.015, 5, _env)
     ars.train()
 
 
